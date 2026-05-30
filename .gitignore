@@ -1,0 +1,5 @@
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+.DS_Store
+Thumbs.db
