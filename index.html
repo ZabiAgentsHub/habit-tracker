@@ -161,7 +161,8 @@
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-    .hdr-settings { position: absolute; right: 0; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.3rem; padding: 4px; }
+    .hdr-right { position: absolute; right: 0; display: flex; align-items: center; gap: 6px; }
+    .hdr-settings { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.3rem; padding: 4px; }
     .hdr-settings:hover { color: var(--text); }
     .hdr-date { color: var(--muted); font-size: 0.82rem; margin-top: 4px; }
 
@@ -734,10 +735,10 @@
 
     /* ── Auth ──────────────────────────────────────────────────────────────── */
     .auth-badge {
-      display: flex; align-items: center; gap: 7px;
+      display: flex; align-items: center; gap: 5px;
       background: rgba(124,106,247,.1); border: 1px solid rgba(124,106,247,.25);
-      border-radius: 99px; padding: 4px 10px 4px 4px;
-      cursor: pointer; transition: background .2s; max-width: 160px;
+      border-radius: 99px; padding: 3px 8px 3px 3px;
+      cursor: pointer; transition: background .2s;
     }
     .auth-badge:hover { background: rgba(124,106,247,.18); }
     .auth-avatar {
@@ -745,10 +746,6 @@
       background: var(--accent); color: #fff;
       display: flex; align-items: center; justify-content: center;
       font-size: .68rem; font-weight: 700; flex-shrink: 0;
-    }
-    .auth-badge-name {
-      font-size: .74rem; color: var(--text); font-weight: 500;
-      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .sync-dot {
       width: 7px; height: 7px; border-radius: 50%;
@@ -1036,22 +1033,42 @@
       <div class="sheet-title" id="auth-modal-title">Sign In</div>
       <button class="sheet-close-btn" onclick="closeById('auth-modal')" title="Close">✕</button>
     </div>
-    <div class="auth-tabs">
-      <button id="auth-tab-in" class="auth-tab on" onclick="setAuthMode('signin')">Sign In</button>
-      <button id="auth-tab-up" class="auth-tab"    onclick="setAuthMode('signup')">Create Account</button>
+
+    <!-- Form view -->
+    <div id="auth-form-view">
+      <div class="auth-tabs">
+        <button id="auth-tab-in" class="auth-tab on" onclick="setAuthMode('signin')">Sign In</button>
+        <button id="auth-tab-up" class="auth-tab"    onclick="setAuthMode('signup')">Create Account</button>
+      </div>
+      <div class="fg">
+        <label class="fl">Email</label>
+        <input class="fi" type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="fg">
+        <label class="fl">Password</label>
+        <input class="fi" type="password" id="auth-pw" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <div class="auth-msg err" id="auth-err"></div>
+      <button class="btn-primary" id="auth-submit-btn" onclick="authSubmit()">Sign In</button>
+      <button class="btn-ghost" onclick="closeById('auth-modal')">Continue as Guest</button>
     </div>
-    <div class="fg">
-      <label class="fl">Email</label>
-      <input class="fi" type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" />
+
+    <!-- Success view (shown after sign-up) -->
+    <div id="auth-success-view" style="display:none;text-align:center;padding:8px 0 4px">
+      <div style="font-size:3.2rem;margin-bottom:14px">🎉</div>
+      <div style="font-size:1.15rem;font-weight:800;color:var(--text);margin-bottom:8px">Account Created!</div>
+      <div style="font-size:.85rem;color:var(--muted);line-height:1.65;margin-bottom:6px">
+        A confirmation link was sent to
+      </div>
+      <div id="auth-success-email" style="font-size:.9rem;font-weight:700;color:var(--accent);margin-bottom:14px;word-break:break-all"></div>
+      <div style="background:rgba(124,106,247,.08);border:1px solid rgba(124,106,247,.2);border-radius:12px;padding:12px 14px;margin-bottom:22px;text-align:left">
+        <div style="font-size:.8rem;color:var(--muted);line-height:1.6">
+          ① Open the email and click <strong style="color:var(--text)">Confirm your email</strong><br>
+          ② Come back here and sign in with your password
+        </div>
+      </div>
+      <button class="btn-primary" onclick="showAuthSignIn()">Sign In →</button>
     </div>
-    <div class="fg">
-      <label class="fl">Password</label>
-      <input class="fi" type="password" id="auth-pw" placeholder="••••••••" autocomplete="current-password" />
-    </div>
-    <div class="auth-msg err" id="auth-err"></div>
-    <div class="auth-msg ok"  id="auth-ok"></div>
-    <button class="btn-primary" id="auth-submit-btn" onclick="authSubmit()">Sign In</button>
-    <button class="btn-ghost" onclick="closeById('auth-modal')">Continue as Guest</button>
   </div>
 </div>
 
@@ -1183,10 +1200,9 @@
   <header>
     <div class="hdr-row">
       <h1>Habit Tracker</h1>
-      <div style="display:flex;align-items:center;gap:8px">
-        <div id="auth-badge" class="auth-badge" style="display:none" onclick="openSettings()">
+      <div class="hdr-right">
+        <div id="auth-badge" class="auth-badge" style="display:none" onclick="openSettings()" title="Account &amp; sync">
           <div class="auth-avatar" id="auth-avatar-char"></div>
-          <span class="auth-badge-name" id="auth-badge-name"></span>
           <div class="sync-dot" id="sync-dot"></div>
         </div>
         <button id="auth-signin-btn" class="hdr-signin-btn" onclick="openAuth()">Sign In</button>
@@ -1415,7 +1431,6 @@ function updateAuthUI() {
     const email    = sbUser.email || '';
     const initials = email.slice(0, 2).toUpperCase();
     document.getElementById('auth-avatar-char').textContent = initials;
-    document.getElementById('auth-badge-name').textContent  = email.split('@')[0];
     if (badge)     badge.style.display     = 'flex';
     if (signinBtn) signinBtn.style.display = 'none';
     if (acctSect)  { acctSect.style.display  = 'block'; document.getElementById('settings-acct-email').textContent = email; }
@@ -1429,6 +1444,9 @@ function updateAuthUI() {
 }
 
 function openAuth() {
+  // Always start from the form view, not the success screen
+  document.getElementById('auth-form-view').style.display    = 'block';
+  document.getElementById('auth-success-view').style.display = 'none';
   setAuthMode('signin');
   document.getElementById('auth-modal').classList.add('open');
 }
@@ -1451,10 +1469,9 @@ async function authSubmit() {
   const email  = document.getElementById('auth-email').value.trim();
   const pw     = document.getElementById('auth-pw').value;
   const errEl  = document.getElementById('auth-err');
-  const okEl   = document.getElementById('auth-ok');
   const btn    = document.getElementById('auth-submit-btn');
 
-  errEl.style.display = 'none'; okEl.style.display = 'none';
+  errEl.style.display = 'none';
 
   if (!email || !pw) { errEl.textContent = 'Please enter your email and password.'; errEl.style.display = 'block'; return; }
   if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
@@ -1471,9 +1488,11 @@ async function authSubmit() {
     } else {
       const { error } = await sb.auth.signUp({ email, password: pw });
       if (error) throw error;
-      okEl.textContent = '✅ Check your email to confirm your account, then sign in.';
-      okEl.style.display = 'block';
-      setAuthMode('signin');
+      // Show dedicated success screen
+      document.getElementById('auth-success-email').textContent = email;
+      document.getElementById('auth-form-view').style.display    = 'none';
+      document.getElementById('auth-success-view').style.display = 'block';
+      document.getElementById('auth-modal-title').textContent    = 'Check Your Email';
     }
   } catch (e) {
     errEl.textContent = e.message || 'Something went wrong. Please try again.';
@@ -1481,6 +1500,14 @@ async function authSubmit() {
   } finally {
     btn.disabled = false; btn.textContent = origTxt;
   }
+}
+
+function showAuthSignIn() {
+  document.getElementById('auth-success-view').style.display = 'none';
+  document.getElementById('auth-form-view').style.display    = 'block';
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-pw').value    = '';
+  setAuthMode('signin');
 }
 
 async function authSignOut() {
