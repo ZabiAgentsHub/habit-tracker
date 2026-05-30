@@ -10,8 +10,8 @@ import { createClient } from '@supabase/supabase-js';
 
 // ── Supabase config ────────────────────────────────────────────────────────────
 // Replace these two values once you have your Supabase project:
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://tywfksgslmzbcbuomfor.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5d2Zrc2dzbG16YmNidW9tZm9yIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxMzU2ODQsImV4cCI6MjA5NTcxMTY4NH0.cHXt04UfHuda2Nc5wcK7583hyGmFdImhuNuPOcJxZXc';
 const sb = SUPABASE_URL !== 'YOUR_SUPABASE_URL'
   ? createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { storage: AsyncStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
