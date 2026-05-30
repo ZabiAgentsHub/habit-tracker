@@ -1458,10 +1458,7 @@ function setAuthMode(mode) {
   document.getElementById('auth-submit-btn').textContent    = isIn ? 'Sign In' : 'Create Account';
   document.getElementById('auth-tab-in').classList.toggle('on',  isIn);
   document.getElementById('auth-tab-up').classList.toggle('on', !isIn);
-  const errEl = document.getElementById('auth-err');
-  const okEl  = document.getElementById('auth-ok');
-  errEl.style.display = 'none';
-  okEl.style.display  = 'none';
+  document.getElementById('auth-err').style.display = 'none';
 }
 
 async function authSubmit() {
