@@ -771,6 +771,58 @@
     }
     .ag-divider::before, .ag-divider::after { content:''; flex:1; height:1px; background:var(--border); }
 
+    /* ── Coaching tab ───────────────────────────────────────────────────────── */
+    .coach-hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+    .coach-hdr-title { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:var(--muted); }
+    .coach-actions { display:flex; gap:8px; }
+    .coach-btn {
+      font-size:.75rem; font-weight:600; padding:6px 13px; border-radius:20px; cursor:pointer;
+      border:1.5px solid var(--border); background:var(--surface2); color:var(--muted);
+      transition:all .2s; white-space:nowrap;
+    }
+    .coach-btn:hover { border-color:var(--accent); color:var(--accent); }
+    .coach-btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    .coach-btn.primary:hover { opacity:.88; }
+    .coach-btn:disabled { opacity:.45; cursor:not-allowed; }
+
+    .coach-card {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:14px; padding:16px; margin-bottom:12px;
+    }
+    .coach-card-top { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+    .coach-badge {
+      font-size:.64rem; font-weight:700; text-transform:uppercase; letter-spacing:.6px;
+      padding:3px 9px; border-radius:99px;
+    }
+    .coach-badge.nudge    { background:rgba(124,106,247,.15); color:var(--accent); border:1px solid rgba(124,106,247,.3); }
+    .coach-badge.weekly   { background:rgba(94,196,176,.13);  color:var(--accent2); border:1px solid rgba(94,196,176,.3); }
+    .coach-badge.monthly  { background:rgba(251,191,36,.12);  color:var(--gold);   border:1px solid rgba(251,191,36,.3); }
+    .coach-ts { font-size:.7rem; color:var(--muted); margin-left:auto; }
+    .coach-content { font-size:.88rem; color:var(--text); line-height:1.65; }
+
+    .coach-empty { text-align:center; padding:44px 0; }
+    .coach-empty-ico { font-size:2.8rem; margin-bottom:12px; }
+    .coach-empty-txt { font-size:.88rem; color:var(--muted); line-height:1.6; }
+
+    .coach-spinner {
+      display:flex; align-items:center; justify-content:center;
+      gap:8px; padding:24px 0; color:var(--muted); font-size:.85rem;
+    }
+    .coach-spin-dot {
+      width:8px; height:8px; border-radius:50%; background:var(--accent);
+      animation:coach-pulse 1.2s ease-in-out infinite;
+    }
+    .coach-spin-dot:nth-child(2) { animation-delay:.2s; }
+    .coach-spin-dot:nth-child(3) { animation-delay:.4s; }
+    @keyframes coach-pulse { 0%,100%{opacity:.2;transform:scale(.8)} 50%{opacity:1;transform:scale(1)} }
+
+    .coach-signin-prompt {
+      text-align:center; padding:44px 20px;
+      background:var(--surface); border:1px solid var(--border); border-radius:16px; margin-top:12px;
+    }
+    .coach-signin-prompt .ico { font-size:2.5rem; margin-bottom:12px; }
+    .coach-signin-prompt p { font-size:.88rem; color:var(--muted); line-height:1.6; margin-bottom:16px; }
+
     /* ── Auth ──────────────────────────────────────────────────────────────── */
     .auth-badge {
       display: flex; align-items: center; gap: 5px;
@@ -1386,6 +1438,18 @@
     </div>
   </div>
 
+  <!-- Coaching Page -->
+  <div class="tab-pane" id="pane-coaching" style="padding:14px 14px 100px">
+    <div class="coach-hdr">
+      <div class="coach-hdr-title">🤖 AI Coaching</div>
+      <div class="coach-actions">
+        <button class="coach-btn" id="coach-btn-reflect" onclick="triggerReflection()">Weekly</button>
+        <button class="coach-btn primary" id="coach-btn-nudge" onclick="triggerNudge()">✦ Nudge me</button>
+      </div>
+    </div>
+    <div id="coach-feed"></div>
+  </div>
+
   <!-- Quotes Page -->
   <div class="tab-pane" id="pane-quotes">
     <div class="q-featured">
@@ -1401,6 +1465,7 @@
     <button class="tab-btn on" id="tb-today"      onclick="switchTab('today')">      <span class="ticon">📋</span><span>Today</span></button>
     <button class="tab-btn"    id="tb-challenges" onclick="switchTab('challenges')"> <span class="ticon">🏆</span><span>Challenges</span></button>
     <button class="tab-btn"    id="tb-history"    onclick="switchTab('history')">    <span class="ticon">📊</span><span>History</span></button>
+    <button class="tab-btn"    id="tb-coaching"   onclick="switchTab('coaching')">   <span class="ticon">🤖</span><span>Coaching</span></button>
     <button class="tab-btn"    id="tb-quotes"     onclick="switchTab('quotes')">     <span class="ticon">💬</span><span>Quotes</span></button>
   </nav>
 </div>
@@ -1856,13 +1921,14 @@ function obFinish() {
 // ── Tab switching ──────────────────────────────────────────────────────────────
 function switchTab(tab) {
   activeTab = tab;
-  ['today','challenges','history','quotes'].forEach(t => {
+  ['today','challenges','history','coaching','quotes'].forEach(t => {
     document.getElementById('pane-' + t).classList.toggle('on', t === tab);
     document.getElementById('tb-' + t).classList.toggle('on', t === tab);
   });
   document.getElementById('fab').style.display = tab === 'today' ? 'flex' : 'none';
   if (tab === 'challenges') renderChallenges();
   if (tab === 'history')    renderHistory();
+  if (tab === 'coaching')   renderCoaching();
   if (tab === 'quotes')     renderQuotes();
 }
 
@@ -2785,6 +2851,177 @@ function checkReminders() {
   });
 }
 
+// ── Coaching ───────────────────────────────────────────────────────────────────
+const COACH_NUDGE_INTERVAL    = 23 * 60 * 60 * 1000; // 23 h
+const COACH_REFLECT_INTERVAL  =  6 * 24 * 60 * 60 * 1000; // 6 days
+
+let coachMsgs = [];
+let coachLoading = false;
+
+function coachStorageKey(kind) {
+  return `ht_coach_${kind}_${sbUser?.id || 'guest'}`;
+}
+
+function coachTimeAgo(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+function coachBadge(type) {
+  if (type === 'nudge')              return { cls: 'nudge',   label: 'Daily Nudge' };
+  if (type === 'weekly_reflection')  return { cls: 'weekly',  label: 'Weekly Reflection' };
+  if (type === 'monthly_reflection') return { cls: 'monthly', label: 'Monthly Reflection' };
+  return { cls: 'nudge', label: type };
+}
+
+async function loadCoachingMessages() {
+  if (!sb || !sbUser) return;
+  const { data } = await sb
+    .from('coaching_messages')
+    .select('*')
+    .eq('user_id', sbUser.id)
+    .order('created_at', { ascending: false })
+    .limit(30);
+  coachMsgs = data || [];
+}
+
+function renderCoaching() {
+  const feed = document.getElementById('coach-feed');
+  if (!feed) return;
+
+  if (!sbUser) {
+    feed.innerHTML = `
+      <div class="coach-signin-prompt">
+        <div class="ico">🤖</div>
+        <p>Sign in to unlock AI-powered coaching — personalised nudges and weekly reflections based on your actual habit data.</p>
+        <button class="btn-primary" onclick="openAuth()" style="width:100%">Sign In to Get Coaching</button>
+      </div>`;
+    return;
+  }
+
+  if (coachLoading) {
+    feed.innerHTML = `
+      <div class="coach-spinner">
+        <div class="coach-spin-dot"></div>
+        <div class="coach-spin-dot"></div>
+        <div class="coach-spin-dot"></div>
+        <span>Claude is thinking…</span>
+      </div>`;
+    return;
+  }
+
+  if (coachMsgs.length === 0) {
+    feed.innerHTML = `
+      <div class="coach-empty">
+        <div class="coach-empty-ico">✨</div>
+        <div class="coach-empty-txt">No coaching messages yet.<br>Tap <strong>✦ Nudge me</strong> for your first personalised tip.</div>
+      </div>`;
+    return;
+  }
+
+  feed.innerHTML = coachMsgs.map(msg => {
+    const b = coachBadge(msg.type);
+    const ts = coachTimeAgo(msg.created_at);
+    const safe = esc(msg.content);
+    return `
+      <div class="coach-card">
+        <div class="coach-card-top">
+          <span class="coach-badge ${b.cls}">${b.label}</span>
+          <span class="coach-ts">${ts}</span>
+        </div>
+        <div class="coach-content">${safe}</div>
+      </div>`;
+  }).join('');
+}
+
+async function callEdgeFunction(fnName, body = {}) {
+  const { data: { session } } = await sb.auth.getSession();
+  const token = session?.access_token;
+  const url = `${SUPABASE_URL}/functions/v1/${fnName}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'apikey': SUPABASE_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${fnName} failed: ${res.status}`);
+  return res.json();
+}
+
+async function triggerNudge() {
+  if (!sb || !sbUser || coachLoading) return;
+  const btn = document.getElementById('coach-btn-nudge');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  coachLoading = true;
+  renderCoaching();
+  try {
+    await callEdgeFunction('generate-nudge');
+    localStorage.setItem(coachStorageKey('nudge'), Date.now().toString());
+    await loadCoachingMessages();
+  } catch(e) {
+    showToast('Coaching unavailable — check your API key');
+    console.error(e);
+  } finally {
+    coachLoading = false;
+    if (btn) { btn.disabled = false; btn.textContent = '✦ Nudge me'; }
+    renderCoaching();
+  }
+}
+
+async function triggerReflection(period = 'weekly') {
+  if (!sb || !sbUser || coachLoading) return;
+  const btn = document.getElementById('coach-btn-reflect');
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  coachLoading = true;
+  renderCoaching();
+  try {
+    await callEdgeFunction('generate-reflection', { period });
+    localStorage.setItem(coachStorageKey('reflect'), Date.now().toString());
+    await loadCoachingMessages();
+  } catch(e) {
+    showToast('Coaching unavailable — check your API key');
+    console.error(e);
+  } finally {
+    coachLoading = false;
+    if (btn) { btn.disabled = false; btn.textContent = 'Weekly'; }
+    renderCoaching();
+  }
+}
+
+async function autoTriggerCoaching() {
+  if (!sb || !sbUser) return;
+  await loadCoachingMessages();
+
+  const lastNudge   = parseInt(localStorage.getItem(coachStorageKey('nudge'))   || '0');
+  const lastReflect = parseInt(localStorage.getItem(coachStorageKey('reflect')) || '0');
+  const now = Date.now();
+
+  // Fire-and-forget — don't block app startup
+  if (now - lastNudge > COACH_NUDGE_INTERVAL) {
+    localStorage.setItem(coachStorageKey('nudge'), now.toString());
+    callEdgeFunction('generate-nudge')
+      .then(() => loadCoachingMessages())
+      .then(() => { if (activeTab === 'coaching') renderCoaching(); })
+      .catch(console.error);
+  }
+
+  if (now - lastReflect > COACH_REFLECT_INTERVAL) {
+    localStorage.setItem(coachStorageKey('reflect'), now.toString());
+    callEdgeFunction('generate-reflection', { period: 'weekly' })
+      .then(() => loadCoachingMessages())
+      .then(() => { if (activeTab === 'coaching') renderCoaching(); })
+      .catch(console.error);
+  }
+}
+
 // ── Auth Gate ──────────────────────────────────────────────────────────────────
 let agMode = 'signin';
 
@@ -2890,16 +3127,24 @@ function hideAuthGate() {
     sb.auth.onAuthStateChange(async (event, session) => {
       sbUser = session?.user ?? null;
       updateAuthUI();
-      if (event === 'SIGNED_IN') { hideAuthGate(); await handleSignIn(); }
+      if (event === 'SIGNED_IN') {
+        hideAuthGate();
+        await handleSignIn();
+        autoTriggerCoaching();
+      }
     });
     sb.auth.getSession().then(({ data: { session } }) => {
       sbUser = session?.user ?? null;
       updateAuthUI();
-      if (sbUser) { hideAuthGate(); handleSignIn(); }
-      // If no session: auth gate stays visible — user must sign in or continue as guest
+      if (sbUser) {
+        hideAuthGate();
+        handleSignIn();
+        autoTriggerCoaching();
+      }
+      // If no session: auth gate stays visible
     });
   } else {
-    hideAuthGate(); // Supabase not configured — go straight to app
+    hideAuthGate();
     updateAuthUI();
   }
 
