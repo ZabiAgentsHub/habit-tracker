@@ -164,14 +164,15 @@
       background: var(--bg); position: sticky; top: 0; z-index: 10;
       display: flex; flex-direction: column; align-items: center;
     }
-    .hdr-row { display: flex; align-items: center; justify-content: center; width: 100%; position: relative; }
+    .hdr-row { display: flex; align-items: center; width: 100%; }
+    .hdr-spacer { flex: 1; min-width: 0; }
     header h1 {
-      font-size: 1.75rem; font-weight: 800;
+      font-size: 1.75rem; font-weight: 800; flex-shrink: 0;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
-    .hdr-right { position: absolute; right: 0; display: flex; align-items: center; gap: 6px; }
-    .hdr-settings { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.3rem; padding: 4px; min-height: 44px; min-width: 44px; }
+    .hdr-right { flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+    .hdr-settings { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 1.3rem; padding: 4px; min-height: 44px; min-width: 44px; flex-shrink: 0; }
     .hdr-settings:hover { color: var(--text); }
     .hdr-date { color: var(--muted); font-size: 0.82rem; margin-top: 4px; }
 
@@ -1375,6 +1376,7 @@
 <div class="app">
   <header>
     <div class="hdr-row">
+      <div class="hdr-spacer"></div>
       <h1>Habit Tracker</h1>
       <div class="hdr-right">
         <div id="auth-badge" class="auth-badge" style="display:none" onclick="openSettings()" title="Account &amp; sync">
@@ -1576,14 +1578,14 @@ async function pullFromCloud() {
 }
 
 async function handleSignIn() {
-  const localHabits = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } })();
-  if (localHabits.length > 0) {
-    const upload = confirm(
-      'You have local habits.\n\nOK → Upload local data to your account.\nCancel → Load your saved cloud data.'
-    );
-    if (upload) { await pushToCloud(); return; }
+  if (!sb || !sbUser) return;
+  const { data } = await sb.from('habits').select('id').eq('user_id', sbUser.id).limit(1);
+  const cloudHasData = data && data.length > 0;
+  if (cloudHasData) {
+    await pullFromCloud();
+  } else {
+    await pushToCloud();
   }
-  await pullFromCloud();
 }
 
 function setSyncState(state) {
