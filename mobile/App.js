@@ -2,10 +2,21 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
   StyleSheet, StatusBar, Modal, Animated, Dimensions,
-  Vibration, Alert, Platform,
+  Vibration, Alert, Platform, KeyboardAvoidingView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { createClient } from '@supabase/supabase-js';
+
+// ── Supabase config ────────────────────────────────────────────────────────────
+// Replace these two values once you have your Supabase project:
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const sb = SUPABASE_URL !== 'YOUR_SUPABASE_URL'
+  ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { storage: AsyncStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false },
+    })
+  : null;
 
 // ── Notifications handler ──────────────────────────────────────────────────────
 Notifications.setNotificationHandler({
@@ -255,6 +266,18 @@ export default function App() {
   const [selDate, setSelDate]         = useState(dateKey());
   const [activeTab, setActiveTab]     = useState('today');
 
+  // auth + sync
+  const [sbUser, setSbUser]           = useState(null);
+  const [showAuth, setShowAuth]       = useState(false);
+  const [authMode, setAuthMode]       = useState('signin'); // 'signin' | 'signup'
+  const [authEmail, setAuthEmail]     = useState('');
+  const [authPw, setAuthPw]           = useState('');
+  const [authErr, setAuthErr]         = useState('');
+  const [authOk, setAuthOk]           = useState('');
+  const [authBusy, setAuthBusy]       = useState(false);
+  const [syncState, setSyncState]     = useState('idle'); // 'idle'|'syncing'|'ok'|'err'
+  const syncTimer                     = useRef(null);
+
   // modals
   const [showAdd, setShowAdd]               = useState(false);
   const [celebration, setCelebration]       = useState(null);
@@ -299,6 +322,119 @@ export default function App() {
       if (status === 'granted') scheduleEveningReminder(habits);
     });
   }, [loaded]);
+
+  // ── Supabase auth listener ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!sb) return;
+    const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
+      const user = session?.user ?? null;
+      setSbUser(user);
+      if (event === 'SIGNED_IN' && user) {
+        await handleSignIn(user);
+      }
+    });
+    sb.auth.getSession().then(({ data: { session } }) => {
+      const user = session?.user ?? null;
+      setSbUser(user);
+      if (user) handleSignIn(user);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // ── Sync: debounce push on every habits/challenges change ────────────────
+  useEffect(() => {
+    if (!loaded || !sb || !sbUser) return;
+    clearTimeout(syncTimer.current);
+    setSyncState('syncing');
+    syncTimer.current = setTimeout(() => pushToCloud(sbUser, habits), 800);
+  }, [habits, loaded]);
+
+  async function pushToCloud(user, currentHabits) {
+    if (!sb || !user) return;
+    try {
+      if (currentHabits.length > 0) {
+        const { error } = await sb.from('habits').upsert(
+          currentHabits.map(h => ({ id: h.id, user_id: user.id, data: h, updated_at: new Date().toISOString() })),
+          { onConflict: 'id,user_id' }
+        );
+        if (error) throw error;
+      }
+      setSyncState('ok');
+    } catch (e) {
+      console.error('[Supabase] push error', e);
+      setSyncState('err');
+    }
+  }
+
+  async function pullFromCloud(user) {
+    if (!sb || !user) return;
+    const { data, error } = await sb.from('habits').select('data').eq('user_id', user.id);
+    if (error) { console.error('[Supabase] pull error', error); setSyncState('err'); return; }
+    const remote = (data || []).map(r => r.data);
+    if (remote.length > 0) {
+      const migrated = remote.map(h => ({
+        type: 'once', target: 1, color: COLORS[0], ci: 0, challenge: null,
+        ...h,
+        log: Object.fromEntries(
+          Object.entries(h.log || {}).map(([k, v]) => [k, v === true ? 1 : (Number(v) || 1)])
+        ),
+      }));
+      setHabits(migrated);
+      await AsyncStorage.setItem(SK, JSON.stringify(migrated));
+    }
+    setSyncState('ok');
+  }
+
+  async function handleSignIn(user) {
+    const raw = await AsyncStorage.getItem(SK);
+    const local = raw ? JSON.parse(raw) : [];
+    if (local.length > 0) {
+      Alert.alert(
+        'Sync your habits',
+        'You have local habits. What would you like to do?',
+        [
+          { text: 'Upload local data', onPress: () => pushToCloud(user, local) },
+          { text: 'Load from cloud',   onPress: () => pullFromCloud(user) },
+        ]
+      );
+    } else {
+      await pullFromCloud(user);
+    }
+  }
+
+  // ── Auth actions ──────────────────────────────────────────────────────────
+  async function doAuth() {
+    if (!sb) { Alert.alert('Setup needed', 'Add your Supabase credentials to App.js first.'); return; }
+    setAuthErr(''); setAuthOk('');
+    if (!authEmail.trim() || !authPw) { setAuthErr('Enter your email and password.'); return; }
+    if (authPw.length < 6) { setAuthErr('Password must be at least 6 characters.'); return; }
+
+    setAuthBusy(true);
+    try {
+      if (authMode === 'signin') {
+        const { error } = await sb.auth.signInWithPassword({ email: authEmail.trim(), password: authPw });
+        if (error) throw error;
+        setShowAuth(false); setAuthEmail(''); setAuthPw('');
+      } else {
+        const { error } = await sb.auth.signUp({ email: authEmail.trim(), password: authPw });
+        if (error) throw error;
+        setAuthOk('Check your email to confirm, then sign in.');
+        setAuthMode('signin');
+      }
+    } catch (e) {
+      setAuthErr(e.message || 'Something went wrong.');
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function doSignOut() {
+    if (!sb) return;
+    await sb.auth.signOut();
+    setSbUser(null);
+    showToast('Signed out');
+    setShowSettings(false);
+  }
 
   // ── Derived values ────────────────────────────────────────────────────────
   const today      = dateKey();
@@ -526,6 +662,64 @@ export default function App() {
       {/* Toast */}
       <Toast message={toastMsg} visible={toastVis} />
 
+      {/* Auth modal */}
+      <Modal visible={showAuth} transparent animationType="slide" onRequestClose={() => setShowAuth(false)}>
+        <KeyboardAvoidingView style={s.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShowAuth(false)} />
+          <View style={s.sheet}>
+            <View style={s.handle} />
+            <Text style={s.sheetTitle}>{authMode === 'signin' ? 'Sign In' : 'Create Account'}</Text>
+
+            {/* Tab toggle */}
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 18 }}>
+              {[{ m: 'signin', l: 'Sign In' }, { m: 'signup', l: 'Create Account' }].map(({ m, l }) => (
+                <TouchableOpacity
+                  key={m}
+                  style={[s.authTab, authMode === m && s.authTabOn]}
+                  onPress={() => { setAuthMode(m); setAuthErr(''); setAuthOk(''); }}
+                >
+                  <Text style={[s.authTabTxt, authMode === m && s.authTabTxtOn]}>{l}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={s.fl}>Email</Text>
+            <TextInput
+              style={[s.fi, { marginBottom: 12 }]}
+              value={authEmail} onChangeText={setAuthEmail}
+              placeholder="you@example.com" placeholderTextColor={C.muted}
+              keyboardType="email-address" autoCapitalize="none"
+              autoComplete="email"
+            />
+            <Text style={s.fl}>Password</Text>
+            <TextInput
+              style={[s.fi, { marginBottom: 12 }]}
+              value={authPw} onChangeText={setAuthPw}
+              placeholder="••••••••" placeholderTextColor={C.muted}
+              secureTextEntry autoComplete="password"
+            />
+
+            {!!authErr && <View style={s.authMsgErr}><Text style={{ color: C.danger, fontSize: 13 }}>{authErr}</Text></View>}
+            {!!authOk  && <View style={s.authMsgOk}><Text style={{ color: C.success, fontSize: 13 }}>{authOk}</Text></View>}
+
+            <TouchableOpacity
+              style={[s.btnPrimary, authBusy && { opacity: 0.6 }]}
+              onPress={doAuth} disabled={authBusy} activeOpacity={0.85}
+            >
+              <Text style={s.btnPrimaryTxt}>
+                {authBusy ? '…' : authMode === 'signin' ? 'Sign In' : 'Create Account'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.btnPrimary, { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: C.border, marginTop: 8 }]}
+              onPress={() => setShowAuth(false)} activeOpacity={0.85}
+            >
+              <Text style={[s.btnPrimaryTxt, { color: C.muted }]}>Continue as Guest</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Celebration modal */}
       <Modal visible={!!celebration} transparent animationType="fade" onRequestClose={() => setCelebration(null)}>
         <View style={s.celebBackdrop}>
@@ -622,7 +816,27 @@ export default function App() {
               <View style={s.handle} />
               <Text style={s.sheetTitle}>⚙️ Settings</Text>
 
-              <Text style={s.fl}>Reminders</Text>
+              <Text style={s.fl}>Account</Text>
+              {sbUser ? (
+                <View style={s.acctRow}>
+                  <Text style={s.acctEmail} numberOfLines={1}>{sbUser.email}</Text>
+                  <TouchableOpacity style={s.acctSignout} onPress={doSignOut}>
+                    <Text style={{ color: C.danger, fontSize: 13, fontWeight: '600' }}>Sign Out</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <TouchableOpacity
+                    style={[s.btnPrimary, { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border }]}
+                    onPress={() => { setShowSettings(false); setAuthMode('signin'); setShowAuth(true); }}
+                  >
+                    <Text style={[s.btnPrimaryTxt, { color: C.text }]}>🔐 Sign In / Create Account</Text>
+                  </TouchableOpacity>
+                  <Text style={s.settingsNote}>Sync your habits across devices.</Text>
+                </>
+              )}
+
+              <Text style={[s.fl, { marginTop: 20 }]}>Reminders</Text>
               <TouchableOpacity
                 style={[s.btnPrimary, { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border }]}
                 onPress={async () => {
@@ -640,7 +854,12 @@ export default function App() {
                 onPress={() => {
                   Alert.alert('Clear all data', 'This will delete all habits and history. Cannot be undone.', [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Clear', style: 'destructive', onPress: () => {
+                    { text: 'Clear', style: 'destructive', onPress: async () => {
+                      if (sb && sbUser) {
+                        await Promise.all([
+                          sb.from('habits').delete().eq('user_id', sbUser.id),
+                        ]);
+                      }
                       setHabits([]); setShowSettings(false);
                       AsyncStorage.removeItem(SK);
                     }},
@@ -658,9 +877,27 @@ export default function App() {
       <View style={s.header}>
         <View style={s.headerRow}>
           <Text style={s.title}>Habit Tracker</Text>
-          <TouchableOpacity onPress={() => setShowSettings(true)} style={s.settingsBtn}>
-            <Text style={{ fontSize: 18 }}>⚙️</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {sbUser ? (
+              <TouchableOpacity style={s.authBadge} onPress={() => setShowSettings(true)}>
+                <View style={s.authAvatar}>
+                  <Text style={s.authAvatarTxt}>{(sbUser.email || '').slice(0, 2).toUpperCase()}</Text>
+                </View>
+                <Text style={s.authBadgeName} numberOfLines={1}>{(sbUser.email || '').split('@')[0]}</Text>
+                <View style={[s.syncDot,
+                  syncState === 'syncing' && { backgroundColor: C.fire },
+                  syncState === 'err'     && { backgroundColor: C.danger },
+                ]} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={s.signinBtn} onPress={() => { setAuthMode('signin'); setShowAuth(true); }}>
+                <Text style={s.signinBtnTxt}>Sign In</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setShowSettings(true)} style={s.settingsBtn}>
+              <Text style={{ fontSize: 18 }}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={s.dateLabel}>{dateLabel}</Text>
       </View>
@@ -1011,6 +1248,28 @@ const s = StyleSheet.create({
   celebSub:   { fontSize:14, color:C.muted, marginBottom:20, textAlign:'center', lineHeight:20 },
   celebBtn:   { backgroundColor:C.accent, borderRadius:12, paddingVertical:12, paddingHorizontal:28 },
   celebBtnTxt:{ color:'#fff', fontSize:15, fontWeight:'700' },
+
+  // auth badge
+  authBadge:    { flexDirection:'row', alignItems:'center', gap:6, backgroundColor:'rgba(124,106,247,.12)', borderWidth:1, borderColor:'rgba(124,106,247,.25)', borderRadius:99, paddingVertical:4, paddingLeft:4, paddingRight:10, maxWidth:140 },
+  authAvatar:   { width:26, height:26, borderRadius:13, backgroundColor:C.accent, alignItems:'center', justifyContent:'center' },
+  authAvatarTxt:{ color:'#fff', fontSize:10, fontWeight:'700' },
+  authBadgeName:{ flex:1, fontSize:12, color:C.text, fontWeight:'500' },
+  syncDot:      { width:7, height:7, borderRadius:3.5, backgroundColor:C.success },
+  signinBtn:    { backgroundColor:C.surface, borderWidth:1.5, borderColor:C.border, borderRadius:20, paddingVertical:5, paddingHorizontal:12 },
+  signinBtnTxt: { fontSize:12, fontWeight:'600', color:C.muted },
+
+  // auth modal
+  authTab:      { flex:1, padding:10, borderRadius:10, alignItems:'center', backgroundColor:C.bg, borderWidth:1.5, borderColor:C.border },
+  authTabOn:    { backgroundColor:'rgba(124,106,247,.15)', borderColor:C.accent },
+  authTabTxt:   { fontSize:13, color:C.muted, fontWeight:'600' },
+  authTabTxtOn: { color:C.accent },
+  authMsgErr:   { backgroundColor:'rgba(224,92,106,.1)', borderWidth:1, borderColor:'rgba(224,92,106,.3)', borderRadius:8, padding:10, marginBottom:10 },
+  authMsgOk:    { backgroundColor:'rgba(76,175,130,.1)', borderWidth:1, borderColor:'rgba(76,175,130,.3)', borderRadius:8, padding:10, marginBottom:10 },
+
+  // account row in settings
+  acctRow:     { flexDirection:'row', alignItems:'center', justifyContent:'space-between', backgroundColor:C.bg, borderWidth:1, borderColor:C.border, borderRadius:12, padding:12, marginTop:8 },
+  acctEmail:   { flex:1, fontSize:13, color:C.muted },
+  acctSignout: { marginLeft:12, backgroundColor:'rgba(224,92,106,.12)', borderWidth:1, borderColor:'rgba(224,92,106,.28)', borderRadius:8, paddingVertical:6, paddingHorizontal:12 },
 
   // toast
   toast:    { position:'absolute', top:50, alignSelf:'center', backgroundColor:'#f0a050', borderRadius:99, paddingVertical:9, paddingHorizontal:22, zIndex:999, elevation:20, shadowColor:'#000', shadowOffset:{width:0,height:3}, shadowOpacity:.4, shadowRadius:8 },

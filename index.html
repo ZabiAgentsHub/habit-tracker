@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Habit Tracker</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -730,6 +731,74 @@
     .ch-emoji-opt.on { border-color: var(--accent); background: rgba(124,106,247,.15); }
 
     @media (min-width: 480px) { .app { box-shadow: 0 0 60px rgba(0,0,0,.5); } }
+
+    /* ── Auth ──────────────────────────────────────────────────────────────── */
+    .auth-badge {
+      display: flex; align-items: center; gap: 7px;
+      background: rgba(124,106,247,.1); border: 1px solid rgba(124,106,247,.25);
+      border-radius: 99px; padding: 4px 10px 4px 4px;
+      cursor: pointer; transition: background .2s; max-width: 160px;
+    }
+    .auth-badge:hover { background: rgba(124,106,247,.18); }
+    .auth-avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .68rem; font-weight: 700; flex-shrink: 0;
+    }
+    .auth-badge-name {
+      font-size: .74rem; color: var(--text); font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .sync-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--success); flex-shrink: 0; transition: background .3s;
+    }
+    .sync-dot.syncing { background: var(--fire); animation: pulse-dot .9s ease-in-out infinite; }
+    .sync-dot.err     { background: var(--danger); }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .hdr-signin-btn {
+      font-size: .73rem; font-weight: 600; padding: 5px 11px;
+      border-radius: 20px; border: 1.5px solid var(--border);
+      background: var(--surface2); color: var(--muted); cursor: pointer;
+      transition: all .2s; white-space: nowrap;
+    }
+    .hdr-signin-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .auth-tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+    .auth-tab {
+      flex: 1; padding: 9px; border-radius: 10px;
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--muted); font-size: .83rem; font-weight: 600; cursor: pointer; transition: all .2s;
+    }
+    .auth-tab.on { background: rgba(124,106,247,.15); border-color: var(--accent); color: var(--accent); }
+
+    .auth-msg {
+      border-radius: 9px; padding: 9px 12px; font-size: .8rem; margin-bottom: 10px; display: none;
+    }
+    .auth-msg.err { background: rgba(224,92,106,.12); border: 1px solid rgba(224,92,106,.3); color: var(--danger); }
+    .auth-msg.ok  { background: rgba(76,175,130,.12); border: 1px solid rgba(76,175,130,.3); color: var(--success); }
+
+    .btn-ghost {
+      width: 100%; padding: 11px; border-radius: 12px;
+      background: transparent; border: 1.5px solid var(--border);
+      color: var(--muted); font-size: .9rem; font-weight: 600; cursor: pointer; transition: all .2s; margin-top: 8px;
+    }
+    .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
+    .acct-row {
+      display: flex; align-items: center; justify-content: space-between;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 12px; padding: 12px 14px; margin-top: 8px;
+    }
+    .acct-email { font-size: .83rem; color: var(--muted); word-break: break-all; }
+    .acct-signout {
+      flex-shrink: 0; margin-left: 12px; padding: 6px 12px; border-radius: 8px;
+      background: rgba(224,92,106,.12); border: 1px solid rgba(224,92,106,.28);
+      color: var(--danger); font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .2s;
+    }
+    .acct-signout:hover { background: rgba(224,92,106,.22); }
   </style>
 </head>
 <body>
@@ -959,6 +1028,33 @@
   </div>
 </div>
 
+<!-- Auth Modal -->
+<div class="backdrop" id="auth-modal" onclick="closeSheet(event)">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-hdr">
+      <div class="sheet-title" id="auth-modal-title">Sign In</div>
+      <button class="sheet-close-btn" onclick="closeById('auth-modal')" title="Close">✕</button>
+    </div>
+    <div class="auth-tabs">
+      <button id="auth-tab-in" class="auth-tab on" onclick="setAuthMode('signin')">Sign In</button>
+      <button id="auth-tab-up" class="auth-tab"    onclick="setAuthMode('signup')">Create Account</button>
+    </div>
+    <div class="fg">
+      <label class="fl">Email</label>
+      <input class="fi" type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" />
+    </div>
+    <div class="fg">
+      <label class="fl">Password</label>
+      <input class="fi" type="password" id="auth-pw" placeholder="••••••••" autocomplete="current-password" />
+    </div>
+    <div class="auth-msg err" id="auth-err"></div>
+    <div class="auth-msg ok"  id="auth-ok"></div>
+    <button class="btn-primary" id="auth-submit-btn" onclick="authSubmit()">Sign In</button>
+    <button class="btn-ghost" onclick="closeById('auth-modal')">Continue as Guest</button>
+  </div>
+</div>
+
 <!-- Settings -->
 <div class="backdrop" id="settings-modal" onclick="closeSheet(event)">
   <div class="sheet">
@@ -966,6 +1062,22 @@
     <div class="sheet-hdr">
       <div class="sheet-title">⚙️ Settings</div>
       <button class="sheet-close-btn" onclick="closeById('settings-modal')" title="Close">✕</button>
+    </div>
+    <div class="fg" id="settings-account-section" style="display:none">
+      <label class="fl">Account</label>
+      <div class="acct-row">
+        <span class="acct-email" id="settings-acct-email"></span>
+        <button class="acct-signout" onclick="authSignOut()">Sign Out</button>
+      </div>
+    </div>
+    <div class="fg" id="settings-signin-section">
+      <label class="fl">Account</label>
+      <button class="btn-primary" style="background:var(--surface);color:var(--text);border:1.5px solid var(--border);margin-top:0" onclick="closeById('settings-modal');openAuth()">
+        🔐 Sign In / Create Account
+      </button>
+      <p style="font-size:.72rem;color:var(--muted);margin-top:8px;line-height:1.5">
+        Sync your habits across devices and keep your data safe in the cloud.
+      </p>
     </div>
     <div class="fg">
       <label class="fl">Notifications</label>
@@ -1071,7 +1183,15 @@
   <header>
     <div class="hdr-row">
       <h1>Habit Tracker</h1>
-      <button class="hdr-settings" onclick="openSettings()">⚙️</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div id="auth-badge" class="auth-badge" style="display:none" onclick="openSettings()">
+          <div class="auth-avatar" id="auth-avatar-char"></div>
+          <span class="auth-badge-name" id="auth-badge-name"></span>
+          <div class="sync-dot" id="sync-dot"></div>
+        </div>
+        <button id="auth-signin-btn" class="hdr-signin-btn" onclick="openAuth()">Sign In</button>
+        <button class="hdr-settings" onclick="openSettings()">⚙️</button>
+      </div>
     </div>
     <div class="hdr-date" id="hdr-date"></div>
   </header>
@@ -1186,6 +1306,192 @@
 
 <!-- ════════════ SCRIPT ════════════ -->
 <script>
+// ── Supabase config ────────────────────────────────────────────────────────────
+// Replace these two values once you have your Supabase project:
+const SUPABASE_URL = 'YOUR_SUPABASE_URL';
+const SUPABASE_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const sb = (typeof supabase !== 'undefined' && SUPABASE_URL !== 'YOUR_SUPABASE_URL')
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+  : null;
+
+let sbUser     = null;
+let syncTimer  = null;
+let authMode   = 'signin'; // 'signin' | 'signup'
+
+// ── Sync layer ─────────────────────────────────────────────────────────────────
+function scheduleSync() {
+  if (!sb || !sbUser) return;
+  clearTimeout(syncTimer);
+  setSyncState('syncing');
+  syncTimer = setTimeout(pushToCloud, 800);
+}
+
+async function pushToCloud() {
+  if (!sb || !sbUser) return;
+  const uid = sbUser.id;
+  try {
+    const ops = [];
+    if (habits.length > 0) {
+      ops.push(sb.from('habits').upsert(
+        habits.map(h => ({ id: h.id, user_id: uid, data: h, updated_at: new Date().toISOString() })),
+        { onConflict: 'id,user_id' }
+      ));
+    }
+    if (challenges.length > 0) {
+      ops.push(sb.from('challenges').upsert(
+        challenges.map(c => ({ id: c.id, user_id: uid, data: c, updated_at: new Date().toISOString() })),
+        { onConflict: 'id,user_id' }
+      ));
+    }
+    if (ops.length > 0) {
+      const results = await Promise.all(ops);
+      const failed  = results.find(r => r.error);
+      if (failed) throw failed.error;
+    }
+    setSyncState('ok');
+  } catch (e) {
+    console.error('[Supabase] push error', e);
+    setSyncState('err');
+  }
+}
+
+async function pullFromCloud() {
+  if (!sb || !sbUser) return;
+  const uid = sbUser.id;
+  const [{ data: hData, error: hErr }, { data: cData, error: cErr }] = await Promise.all([
+    sb.from('habits').select('data').eq('user_id', uid),
+    sb.from('challenges').select('data').eq('user_id', uid),
+  ]);
+  if (hErr || cErr) { console.error('[Supabase] pull error', hErr || cErr); setSyncState('err'); return; }
+
+  const remote = (hData || []).map(r => r.data);
+  if (remote.length > 0) {
+    habits = remote.map(h => ({
+      type:'once', target:1, color:COLORS[0], ci:0, emoji:'', challenge:null, reminderTime:null,
+      ...h,
+      log: Object.fromEntries(
+        Object.entries(h.log || {}).map(([k,v]) => [k, v === true ? 1 : (Number(v) || 1)])
+      ),
+    }));
+    localStorage.setItem(STORE_KEY, JSON.stringify(habits));
+  }
+
+  const remoteC = (cData || []).map(r => r.data);
+  if (remoteC.length > 0) {
+    challenges = remoteC;
+    localStorage.setItem(CHAL_KEY, JSON.stringify(challenges));
+  }
+
+  buildWeek(); renderToday(); renderChallenges(); setSyncState('ok');
+}
+
+async function handleSignIn() {
+  const localHabits = (() => { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; } })();
+  if (localHabits.length > 0) {
+    const upload = confirm(
+      'You have local habits.\n\nOK → Upload local data to your account.\nCancel → Load your saved cloud data.'
+    );
+    if (upload) { await pushToCloud(); return; }
+  }
+  await pullFromCloud();
+}
+
+function setSyncState(state) {
+  const dot = document.getElementById('sync-dot');
+  if (!dot) return;
+  dot.classList.remove('syncing', 'err');
+  if (state === 'syncing') dot.classList.add('syncing');
+  else if (state === 'err') dot.classList.add('err');
+}
+
+// ── Auth UI ────────────────────────────────────────────────────────────────────
+function updateAuthUI() {
+  const badge     = document.getElementById('auth-badge');
+  const signinBtn = document.getElementById('auth-signin-btn');
+  const acctSect  = document.getElementById('settings-account-section');
+  const signinSect= document.getElementById('settings-signin-section');
+
+  if (sbUser) {
+    const email    = sbUser.email || '';
+    const initials = email.slice(0, 2).toUpperCase();
+    document.getElementById('auth-avatar-char').textContent = initials;
+    document.getElementById('auth-badge-name').textContent  = email.split('@')[0];
+    if (badge)     badge.style.display     = 'flex';
+    if (signinBtn) signinBtn.style.display = 'none';
+    if (acctSect)  { acctSect.style.display  = 'block'; document.getElementById('settings-acct-email').textContent = email; }
+    if (signinSect) signinSect.style.display = 'none';
+  } else {
+    if (badge)     badge.style.display     = 'none';
+    if (signinBtn) signinBtn.style.display = '';
+    if (acctSect)  acctSect.style.display  = 'none';
+    if (signinSect) signinSect.style.display = 'block';
+  }
+}
+
+function openAuth() {
+  setAuthMode('signin');
+  document.getElementById('auth-modal').classList.add('open');
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const isIn = mode === 'signin';
+  document.getElementById('auth-modal-title').textContent   = isIn ? 'Sign In' : 'Create Account';
+  document.getElementById('auth-submit-btn').textContent    = isIn ? 'Sign In' : 'Create Account';
+  document.getElementById('auth-tab-in').classList.toggle('on',  isIn);
+  document.getElementById('auth-tab-up').classList.toggle('on', !isIn);
+  const errEl = document.getElementById('auth-err');
+  const okEl  = document.getElementById('auth-ok');
+  errEl.style.display = 'none';
+  okEl.style.display  = 'none';
+}
+
+async function authSubmit() {
+  if (!sb) { showToast('Add your Supabase credentials first'); return; }
+  const email  = document.getElementById('auth-email').value.trim();
+  const pw     = document.getElementById('auth-pw').value;
+  const errEl  = document.getElementById('auth-err');
+  const okEl   = document.getElementById('auth-ok');
+  const btn    = document.getElementById('auth-submit-btn');
+
+  errEl.style.display = 'none'; okEl.style.display = 'none';
+
+  if (!email || !pw) { errEl.textContent = 'Please enter your email and password.'; errEl.style.display = 'block'; return; }
+  if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  const origTxt = btn.textContent;
+  btn.textContent = authMode === 'signin' ? 'Signing in…' : 'Creating account…';
+
+  try {
+    if (authMode === 'signin') {
+      const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error;
+      closeById('auth-modal');
+    } else {
+      const { error } = await sb.auth.signUp({ email, password: pw });
+      if (error) throw error;
+      okEl.textContent = '✅ Check your email to confirm your account, then sign in.';
+      okEl.style.display = 'block';
+      setAuthMode('signin');
+    }
+  } catch (e) {
+    errEl.textContent = e.message || 'Something went wrong. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = origTxt;
+  }
+}
+
+async function authSignOut() {
+  if (!sb) return;
+  await sb.auth.signOut();
+  sbUser = null;
+  updateAuthUI();
+  showToast('Signed out — data stays saved locally');
+  closeById('settings-modal');
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 const STORE_KEY = 'ht_v4';
 const CHAL_KEY  = 'ht_chals_v1';
@@ -1313,7 +1619,7 @@ function loadHabits() {
   } catch { return null; }
 }
 
-function saveHabits() { localStorage.setItem(STORE_KEY, JSON.stringify(habits)); }
+function saveHabits() { localStorage.setItem(STORE_KEY, JSON.stringify(habits)); scheduleSync(); }
 
 // ── Audio ──────────────────────────────────────────────────────────────────────
 function getACtx() {
@@ -1657,7 +1963,7 @@ function updateStats() {
 function loadChallenges() {
   try { return JSON.parse(localStorage.getItem(CHAL_KEY)) || []; } catch { return []; }
 }
-function saveChallenges() { localStorage.setItem(CHAL_KEY, JSON.stringify(challenges)); }
+function saveChallenges() { localStorage.setItem(CHAL_KEY, JSON.stringify(challenges)); scheduleSync(); }
 
 // A challenge "day" = ALL its habits were done that day
 function chalDayDone(chal, key) {
@@ -2328,15 +2634,21 @@ function saveReminderSheet() {
 }
 
 // ── Settings ───────────────────────────────────────────────────────────────────
-function clearAllData() {
+async function clearAllData() {
   if (!confirm('Delete ALL habits and history? Cannot be undone.')) return;
   localStorage.removeItem(STORE_KEY);
+  localStorage.removeItem(CHAL_KEY);
   localStorage.removeItem('ht_ob');
-  habits = [];
-  saveHabits();
+  habits = []; challenges = [];
+  if (sb && sbUser) {
+    const uid = sbUser.id;
+    await Promise.all([
+      sb.from('habits').delete().eq('user_id', uid),
+      sb.from('challenges').delete().eq('user_id', uid),
+    ]);
+  }
   document.getElementById('settings-modal').classList.remove('open');
   renderToday(); buildWeek();
-  // Show onboarding again
   const ob = document.getElementById('onboarding');
   ob.style.display = 'flex'; ob.classList.remove('out');
   obNext(1);
@@ -2394,7 +2706,23 @@ function checkReminders() {
   }
 
   // Swipe-down-to-close for all sheets
-  ['habit-modal','settings-modal','rem-sheet','create-ch-modal'].forEach(initSwipeToClose);
+  ['habit-modal','settings-modal','rem-sheet','create-ch-modal','auth-modal'].forEach(initSwipeToClose);
+
+  // Auth state listener — fires immediately with current session, then on every change
+  if (sb) {
+    sb.auth.onAuthStateChange(async (event, session) => {
+      sbUser = session?.user ?? null;
+      updateAuthUI();
+      if (event === 'SIGNED_IN') await handleSignIn();
+    });
+    sb.auth.getSession().then(({ data: { session } }) => {
+      sbUser = session?.user ?? null;
+      updateAuthUI();
+      if (sbUser) handleSignIn();
+    });
+  } else {
+    updateAuthUI(); // still run so sign-in button shows correctly
+  }
 
   buildWeek();
   renderToday();
