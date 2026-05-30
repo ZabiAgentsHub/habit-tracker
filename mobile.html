@@ -828,6 +828,42 @@
     .q-card-text { font-size: 0.92rem; }
     .q-featured-text { font-size: 1.08rem; }
 
+    /* ── Auth Gate (first screen) ──────────────────────────────────────────── */
+    .auth-gate {
+      position: fixed; inset: 0; z-index: 2000;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      overflow-y: auto; transition: opacity .35s;
+    }
+    .auth-gate.out { opacity: 0; pointer-events: none; }
+
+    .ag-wrap {
+      width: 100%; max-width: 420px;
+      padding: 48px 28px 40px;
+      display: flex; flex-direction: column;
+    }
+    .ag-logo { font-size: 3.8rem; text-align: center; margin-bottom: 12px; animation: floatY 3s ease-in-out infinite; }
+    .ag-title {
+      font-size: 2rem; font-weight: 800; text-align: center; margin-bottom: 8px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .ag-sub { font-size: .88rem; color: var(--muted); text-align: center; margin-bottom: 32px; line-height: 1.55; }
+
+    .ag-tabs { display: flex; gap: 6px; margin-bottom: 16px; }
+    .ag-tab {
+      flex: 1; padding: 12px; border-radius: 11px; min-height: 44px;
+      background: var(--surface2); border: 1.5px solid var(--border);
+      color: var(--muted); font-size: .88rem; font-weight: 600; cursor: pointer; transition: all .2s;
+    }
+    .ag-tab.on { background: rgba(124,106,247,.15); border-color: var(--accent); color: var(--accent); }
+
+    .ag-divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 14px 0; color: var(--muted); font-size: .75rem; letter-spacing: .04em;
+    }
+    .ag-divider::before, .ag-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+
     /* ── Auth ──────────────────────────────────────────────────────────────── */
     .auth-badge {
       display: flex; align-items: center; gap: 5px;
@@ -891,6 +927,54 @@
   </style>
 </head>
 <body>
+
+<!-- ════════════════════════════
+     AUTH GATE (first screen)
+════════════════════════════ -->
+<div id="auth-gate" class="auth-gate">
+  <div class="ag-wrap">
+    <div class="ag-logo">🎯</div>
+    <h1 class="ag-title">Habit Tracker</h1>
+    <p class="ag-sub">Build habits. Earn streaks. Crush goals.</p>
+
+    <!-- Form view -->
+    <div id="ag-form-view">
+      <div class="ag-tabs">
+        <button class="ag-tab on" id="ag-tab-in" onclick="setAgMode('signin')">Sign In</button>
+        <button class="ag-tab"    id="ag-tab-up" onclick="setAgMode('signup')">Create Account</button>
+      </div>
+      <div class="fg">
+        <label class="fl">Email</label>
+        <input class="fi" type="email" id="ag-email" placeholder="you@example.com" autocomplete="email" />
+      </div>
+      <div class="fg">
+        <label class="fl">Password</label>
+        <input class="fi" type="password" id="ag-pw" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <div class="auth-msg err" id="ag-err" style="display:none"></div>
+      <button class="btn-primary" id="ag-submit" onclick="agSubmit()" style="margin-top:6px;min-height:48px">Sign In</button>
+      <div class="ag-divider"><span>or</span></div>
+      <button class="btn-ghost" onclick="agGuest()" style="min-height:48px">Continue as Guest →</button>
+    </div>
+
+    <!-- Success view (shown after sign-up) -->
+    <div id="ag-success-view" style="display:none;text-align:center;padding:8px 0">
+      <div style="font-size:3.2rem;margin-bottom:14px">🎉</div>
+      <div style="font-size:1.15rem;font-weight:800;color:var(--text);margin-bottom:8px">Account Created!</div>
+      <div style="font-size:.85rem;color:var(--muted);line-height:1.65;margin-bottom:6px">A confirmation link was sent to</div>
+      <div id="ag-success-email" style="font-size:.92rem;font-weight:700;color:var(--accent);margin-bottom:16px;word-break:break-all"></div>
+      <div style="background:rgba(124,106,247,.08);border:1px solid rgba(124,106,247,.2);border-radius:12px;padding:14px 16px;margin-bottom:24px;text-align:left">
+        <div style="font-size:.82rem;color:var(--muted);line-height:1.7">
+          ① Open the email and tap <strong style="color:var(--text)">Confirm your email</strong><br>
+          ② Come back here and sign in with your password
+        </div>
+      </div>
+      <button class="btn-primary" onclick="agBackToSignIn()" style="min-height:48px">Sign In →</button>
+      <div class="ag-divider" style="margin-top:12px"><span>or</span></div>
+      <button class="btn-ghost" onclick="agGuest()" style="min-height:48px">Continue as Guest</button>
+    </div>
+  </div>
+</div>
 
 <!-- ════════════════════════════
      ONBOARDING (4 screens)
@@ -2778,6 +2862,69 @@ function checkReminders() {
   });
 }
 
+// ── Auth Gate ──────────────────────────────────────────────────────────────────
+let agMode = 'signin';
+
+function setAgMode(mode) {
+  agMode = mode;
+  const isIn = mode === 'signin';
+  document.getElementById('ag-tab-in').classList.toggle('on',  isIn);
+  document.getElementById('ag-tab-up').classList.toggle('on', !isIn);
+  document.getElementById('ag-submit').textContent = isIn ? 'Sign In' : 'Create Account';
+  document.getElementById('ag-err').style.display = 'none';
+}
+
+async function agSubmit() {
+  if (!sb) { agGuest(); return; }
+  const email = document.getElementById('ag-email').value.trim();
+  const pw    = document.getElementById('ag-pw').value;
+  const errEl = document.getElementById('ag-err');
+  const btn   = document.getElementById('ag-submit');
+
+  errEl.style.display = 'none';
+  if (!email || !pw) { errEl.textContent = 'Enter your email and password.'; errEl.style.display = 'block'; return; }
+  if (pw.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = agMode === 'signin' ? 'Signing in…' : 'Creating account…';
+
+  try {
+    if (agMode === 'signin') {
+      const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error;
+      hideAuthGate();
+    } else {
+      const { error } = await sb.auth.signUp({ email, password: pw });
+      if (error) throw error;
+      document.getElementById('ag-success-email').textContent  = email;
+      document.getElementById('ag-form-view').style.display    = 'none';
+      document.getElementById('ag-success-view').style.display = 'block';
+    }
+  } catch (e) {
+    errEl.textContent = e.message || 'Something went wrong. Please try again.';
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
+}
+
+function agGuest() { hideAuthGate(); }
+
+function agBackToSignIn() {
+  document.getElementById('ag-success-view').style.display = 'none';
+  document.getElementById('ag-form-view').style.display    = 'block';
+  document.getElementById('ag-email').value = '';
+  document.getElementById('ag-pw').value    = '';
+  setAgMode('signin');
+}
+
+function hideAuthGate() {
+  const gate = document.getElementById('auth-gate');
+  gate.classList.add('out');
+  setTimeout(() => { gate.style.display = 'none'; }, 380);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────────
 (function init() {
   const stored = loadHabits();
@@ -2818,14 +2965,15 @@ function checkReminders() {
     sb.auth.onAuthStateChange(async (event, session) => {
       sbUser = session?.user ?? null;
       updateAuthUI();
-      if (event === 'SIGNED_IN') await handleSignIn();
+      if (event === 'SIGNED_IN') { hideAuthGate(); await handleSignIn(); }
     });
     sb.auth.getSession().then(({ data: { session } }) => {
       sbUser = session?.user ?? null;
       updateAuthUI();
-      if (sbUser) handleSignIn();
+      if (sbUser) { hideAuthGate(); handleSignIn(); }
     });
   } else {
+    hideAuthGate();
     updateAuthUI();
   }
 
