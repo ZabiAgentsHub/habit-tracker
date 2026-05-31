@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import Anthropic from "npm:@anthropic-ai/sdk";
+import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.36.3";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -41,10 +41,14 @@ serve(async (req) => {
     const { data: { user }, error: userErr } = await supabase.auth.getUser();
     if (userErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { data: rows } = await supabase
+    console.log("Generating", type, "for user:", user.id);
+
+    const { data: rows, error: habitsErr } = await supabase
       .from("habits")
       .select("data")
       .eq("user_id", user.id);
+
+    if (habitsErr) return json({ error: "Failed to fetch habits" }, 500);
 
     const habits: any[] = (rows || []).map((r: any) => r.data);
 
@@ -53,14 +57,13 @@ serve(async (req) => {
     if (habits.length === 0) {
       content = `No habits tracked yet — start building habits to unlock your ${label} reflection! 🚀`;
     } else {
-      // Build per-habit stats + day-by-day breakdown
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      const numWeeks = Math.ceil(days / 7);
 
       const statsLines = habits.map((h) => {
         let doneDays = 0;
-        const weeklyBuckets: number[] = [0, 0, 0, 0]; // week 1..4 (or 1..1 for 7d)
-        const numWeeks = Math.ceil(days / 7);
+        const weeklyBuckets: number[] = Array(numWeeks).fill(0);
 
         for (let i = 0; i < days; i++) {
           const d = new Date(today);
@@ -70,15 +73,13 @@ serve(async (req) => {
           const done = h.type === "multi" ? count >= h.target : count >= 1;
           if (done) {
             doneDays++;
-            const weekIdx = Math.min(Math.floor(i / 7), numWeeks - 1);
-            weeklyBuckets[weekIdx]++;
+            weeklyBuckets[Math.min(Math.floor(i / 7), numWeeks - 1)]++;
           }
         }
 
         const pct = Math.round((doneDays / days) * 100);
         const weekBreakdown = weeklyBuckets
-          .slice(0, numWeeks)
-          .map((n, i) => `week${i + 1}: ${n}/7`)
+          .map((n, i) => `wk${i + 1}: ${n}/${Math.min(7, days - i * 7)}`)
           .join(", ");
         const extra = h.type === "multi" ? ` (target ${h.target}×/day)` : "";
         return `• ${h.name}${extra}: ${pct}% (${doneDays}/${days} days) [${weekBreakdown}]`;
@@ -95,6 +96,8 @@ Write a warm, insight-driven reflection (3–5 sentences). Requirements:
 - Close with a forward-looking motivational sentence for the next ${period === "monthly" ? "month" : "week"}
 No bullet points. Sound like a coach who genuinely knows them, not a report.`;
 
+      console.log("Calling Claude API for reflection...");
+
       const anthropic = new Anthropic({
         apiKey: Deno.env.get("ANTHROPIC_API_KEY")!,
       });
@@ -105,18 +108,23 @@ No bullet points. Sound like a coach who genuinely knows them, not a report.`;
         messages: [{ role: "user", content: prompt }],
       });
 
-      content = (response.content[0] as any).text as string;
+      console.log("Claude responded, stop_reason:", response.stop_reason);
+
+      const block = response.content.find((b: any) => b.type === "text");
+      content = (block as any)?.text ?? "Great work this week — keep the momentum going!";
     }
 
-    await admin.from("coaching_messages").insert({
+    const { error: insertErr } = await admin.from("coaching_messages").insert({
       user_id: user.id,
       type,
       content,
     });
 
+    if (insertErr) console.error("Insert error:", insertErr);
+
     return json({ content });
   } catch (err) {
-    console.error("generate-reflection error:", err);
+    console.error("generate-reflection fatal error:", err);
     return json({ error: String(err) }, 500);
   }
 });

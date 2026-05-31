@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import Anthropic from "npm:@anthropic-ai/sdk";
+// esm.sh is a reliable CDN for Deno — avoids npm: cold-start resolution failures
+import Anthropic from "https://esm.sh/@anthropic-ai/sdk@0.36.3";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -62,12 +63,20 @@ serve(async (req) => {
     const { data: { user }, error: userErr } = await supabase.auth.getUser();
     if (userErr || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { data: rows } = await supabase
+    console.log("Fetching habits for user:", user.id);
+
+    const { data: rows, error: habitsErr } = await supabase
       .from("habits")
       .select("data")
       .eq("user_id", user.id);
 
+    if (habitsErr) {
+      console.error("Habits fetch error:", habitsErr);
+      return json({ error: "Failed to fetch habits" }, 500);
+    }
+
     const habits: any[] = (rows || []).map((r: any) => r.data);
+    console.log("Habits count:", habits.length);
 
     let content: string;
 
@@ -92,6 +101,8 @@ Write a punchy, personalized coaching nudge (2–3 sentences max). Rules:
 - For any habit under 50% this week, give one concrete micro-tip
 - End with a motivating push. No bullet points, no generic advice.`;
 
+      console.log("Calling Claude API...");
+
       const anthropic = new Anthropic({
         apiKey: Deno.env.get("ANTHROPIC_API_KEY")!,
       });
@@ -102,18 +113,23 @@ Write a punchy, personalized coaching nudge (2–3 sentences max). Rules:
         messages: [{ role: "user", content: prompt }],
       });
 
-      content = (response.content[0] as any).text as string;
+      console.log("Claude responded, stop_reason:", response.stop_reason);
+
+      const block = response.content.find((b: any) => b.type === "text");
+      content = (block as any)?.text ?? "Keep going — every habit you track is a step forward!";
     }
 
-    await admin.from("coaching_messages").insert({
+    const { error: insertErr } = await admin.from("coaching_messages").insert({
       user_id: user.id,
       type: "nudge",
       content,
     });
 
+    if (insertErr) console.error("Insert error:", insertErr);
+
     return json({ content });
   } catch (err) {
-    console.error("generate-nudge error:", err);
+    console.error("generate-nudge fatal error:", err);
     return json({ error: String(err) }, 500);
   }
 });
